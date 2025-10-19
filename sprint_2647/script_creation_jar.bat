@@ -5,7 +5,7 @@ setlocal
 
 rem Paramètres
 
-set SRC_DIR=src\Frieren\p17\
+set SRC_DIR=src\com\frieren\p17\
 set LIB_DIR=lib
 set CLASSES_DIR=classes
 

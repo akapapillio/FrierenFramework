@@ -1,5 +1,5 @@
 # FrierenFramework
-dévellopement d'un Framework java
 
+Développement d'un Framework Java
 
-on va donner l'intégralité du test ou mini projet avec FrierenFramework qui on servi de test pour nos sprint 
+On va donner l'intégralité du test ou mini projet avec FrierenFramework qui a servi de test pour nos sprints.

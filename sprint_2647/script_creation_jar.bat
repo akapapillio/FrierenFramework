@@ -5,7 +5,9 @@ setlocal
 
 rem Paramètres
 
-set SRC_DIR=src\com\frieren\p17\
+
+set SRC_DIR=src
+
 set LIB_DIR=lib
 set CLASSES_DIR=classes
 
@@ -30,7 +32,13 @@ rem compilation
 rem /chemin/vers/java19/bin/javac -target 19 -source 19 -d ./classes/ ./src/*
 rem javac -d ./classes/ ./src/*
 
-javac -cp "%LIB_DIR%\*" -d "%CLASSES_DIR%" %SRC_DIR%\*.java  
+rem 
+
+rem lister les fichier .java
+dir /S /B %SRC_DIR%\*.java > sources.txt
+javac -cp "%LIB_DIR%\*" -d "%CLASSES_DIR%" @sources.txt
+
+
 
 Xcopy .\"classes" .\"%temp%"\classes /E /H /C /I /Y
 

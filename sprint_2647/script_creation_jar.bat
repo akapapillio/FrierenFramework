@@ -5,9 +5,7 @@ setlocal
 
 rem Paramètres
 
-
 set SRC_DIR=src
-
 set LIB_DIR=lib
 set CLASSES_DIR=classes
 
@@ -31,7 +29,6 @@ mkdir "%temp%"\classes
 rem compilation
 rem /chemin/vers/java19/bin/javac -target 19 -source 19 -d ./classes/ ./src/*
 rem javac -d ./classes/ ./src/*
-
 rem 
 
 rem lister les fichier .java

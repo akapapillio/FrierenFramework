@@ -8,6 +8,7 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import Map.HashMap;
 import Map.Mapping;
@@ -99,54 +100,69 @@ public class FrontServlet extends HttpServlet {
         }
     }
     
-
     @SuppressWarnings("unchecked")
     private boolean handleAnnotatedControllers(HttpServletRequest req, HttpServletResponse res, String path) {
         try {
             List<HashMap> routes = (List<HashMap>) getServletContext().getAttribute("routes");
             if (routes == null) return false;
-            System.out.println("➡ Exécution de la méthode : ");
+    
             for (HashMap h : routes) {
                 if (h.getUrl().equals(path) && h.isAssociated()) {
                     Mapping mapping = h.getMapping();
                     String className = mapping.getClassName();
                     String methodName = h.leMethode();
     
+                    // Instanciation dynamique du controller
                     Class<?> clazz = Class.forName(className);
                     Object controllerInstance = clazz.getDeclaredConstructor().newInstance();
                     Method method = clazz.getDeclaredMethod(methodName);
     
+                    // 🔹 Log de preuve
                     System.out.println("➡ Exécution de la méthode : " + className + "." + methodName);
     
+                    // Exécution de la méthode
                     Object result = method.invoke(controllerInstance);
     
-                    // Log pour prouver le type et le comportement
+                    // 🔹 Log sur le retour
                     if (result != null) {
                         System.out.println("➡ Valeur de retour : " + result + " | Type : " + result.getClass().getSimpleName());
                     } else {
                         System.out.println("➡ Valeur de retour : null");
                     }
     
+                    // 🔹 Gestion du retour
                     if (result instanceof String) {
-                        System.out.println("Retour est une chaîne → affichée au navigateur");
+                        System.out.println(" Retour est une chaîne → affichée au navigateur");
+                        res.setContentType("text/html;charset=UTF-8");
+                        try (PrintWriter out = res.getWriter()) {
+                            out.println(result);
+                        }
+                    } else if (result instanceof ModelView) {
+                        System.out.println(" Retour est un ModelView → dispatch vers la vue");
+                        ModelView mv = (ModelView) result;
+    
+                        // Ajout des données dans le request
+                        for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
+                            req.setAttribute(entry.getKey(), entry.getValue());
+                        }
+    
+                        // Dispatcher vers la JSP ou HTML
+                        String view = mv.getView(); // ex: "/WEB-INF/views/home.jsp"
+                        req.getRequestDispatcher(view).forward(req, res);
                     } else {
-                        System.out.println("Retour n'est pas une chaîne → aucune action effectuée (comportement actuel)");
+                        System.out.println("Retour n'est pas une chaîne ni ModelView → aucune action effectuée");
                     }
     
-                    res.setContentType("text/html;charset=UTF-8");
-                    try (PrintWriter out = res.getWriter()) {
-                        out.println(result);
-                    }
-    
-                    return true;
+                    return true; // Route traitée
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
     
-        return false;
+        return false; // Route non trouvée
     }
+    
     
 
     // Affichage des routes pour debug

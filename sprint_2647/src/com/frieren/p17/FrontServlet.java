@@ -61,7 +61,7 @@ public class FrontServlet extends HttpServlet {
 
             // Stockage global dans le ServletContext
             getServletContext().setAttribute("routes", routes);
-            System.out.println("✅ Scan terminé : " + routes.size() + " routes enregistrées dans ServletContext");
+            System.out.println("✅ Scan terminé : " + routes.size() + " routes enregistrées dans ServletContext ...");
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -71,55 +71,83 @@ public class FrontServlet extends HttpServlet {
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
         String path = req.getRequestURI().substring(req.getContextPath().length());
-
+    
         // Endpoint spécial pour afficher toutes les routes
         if (path.equals("/routes")) {
             showRoutes(res);
             return;
         }
-
-        // Vérifier si c'est un fichier statique
+    
+        // ⚡ LOG pour preuve : requête reçue
+        System.out.println("🔹 Requête reçue pour : " + path);
+    
+        // Vérifie d'abord si c'est une route annotée
+        boolean handled = handleAnnotatedControllers(req, res, path);
+        if (handled) {
+            System.out.println("✅ Route annotée traitée avec succès : " + path);
+            return;
+        }
+    
+        // Sinon, vérifier si c'est un fichier statique
         boolean resourceExists = getServletContext().getResource(path) != null;
         if (resourceExists) {
+            System.out.println(" Fichier statique trouvé : " + path + " → servi par defaultDispatcher");
             defaultServe(req, res);
         } else {
-            // Vérifie les routes annotées
-            if (!handleAnnotatedControllers(req, res, path)) {
-                customServe(req, res);
-            }
+            System.out.println(" Ressource inconnue : " + path + " → affichage page customServe");
+            customServe(req, res);
         }
     }
+    
 
     @SuppressWarnings("unchecked")
     private boolean handleAnnotatedControllers(HttpServletRequest req, HttpServletResponse res, String path) {
         try {
             List<HashMap> routes = (List<HashMap>) getServletContext().getAttribute("routes");
             if (routes == null) return false;
-
+            System.out.println("➡ Exécution de la méthode : ");
             for (HashMap h : routes) {
                 if (h.getUrl().equals(path) && h.isAssociated()) {
                     Mapping mapping = h.getMapping();
                     String className = mapping.getClassName();
                     String methodName = h.leMethode();
-
+    
                     Class<?> clazz = Class.forName(className);
                     Object controllerInstance = clazz.getDeclaredConstructor().newInstance();
                     Method method = clazz.getDeclaredMethod(methodName);
+    
+                    System.out.println("➡ Exécution de la méthode : " + className + "." + methodName);
+    
                     Object result = method.invoke(controllerInstance);
-
+    
+                    // Log pour prouver le type et le comportement
+                    if (result != null) {
+                        System.out.println("➡ Valeur de retour : " + result + " | Type : " + result.getClass().getSimpleName());
+                    } else {
+                        System.out.println("➡ Valeur de retour : null");
+                    }
+    
+                    if (result instanceof String) {
+                        System.out.println("Retour est une chaîne → affichée au navigateur");
+                    } else {
+                        System.out.println("Retour n'est pas une chaîne → aucune action effectuée (comportement actuel)");
+                    }
+    
                     res.setContentType("text/html;charset=UTF-8");
                     try (PrintWriter out = res.getWriter()) {
                         out.println(result);
                     }
+    
                     return true;
                 }
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-
+    
         return false;
     }
+    
 
     // Affichage des routes pour debug
     @SuppressWarnings("unchecked")

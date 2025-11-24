@@ -1,216 +1,216 @@
 package com.frieren.p17;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.lang.reflect.Method;
-import java.net.URL;
-import java.net.URLDecoder;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-import Map.HashMap;
-import Map.Mapping;
-import annotation.AnnotationController;
-import annotation.GetMethode;
+import annotation.Controller;
+import annotation.MyMap;
+import annotation.RequestParam;
 import jakarta.servlet.RequestDispatcher;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
 
 public class FrontServlet extends HttpServlet {
 
     private RequestDispatcher defaultDispatcher;
+    private MyScanner controllerScanner;
+    private Map<String, Class<?>> baseUrlToController;
 
     @Override
     public void init() throws ServletException {
         defaultDispatcher = getServletContext().getNamedDispatcher("default");
-        List<HashMap> routes = new ArrayList<>();
+        controllerScanner = new MyScanner();
+        baseUrlToController = new HashMap<>();
+        initializeControllers();
+    }
 
+    private void initializeControllers() throws ServletException {
         try {
             String controllerPackage = getServletConfig().getInitParameter("Controllers");
-            if (controllerPackage == null) return;
-
-            ClassLoader loader = Thread.currentThread().getContextClassLoader();
-            URL packageUrl = loader.getResource(controllerPackage.replace('.', '/'));
-            if (packageUrl == null) return;
-
-            File dir = new File(URLDecoder.decode(packageUrl.getFile(), "UTF-8"));
-            if (!dir.exists() || !dir.isDirectory()) return;
-
-            for (File file : dir.listFiles()) {
-                if (file.isFile() && file.getName().endsWith(".class")) {
-                    String className = file.getName().replace(".class", "");
-                    Class<?> clazz = Class.forName(controllerPackage + "." + className);
-
-                    if (clazz.isAnnotationPresent(AnnotationController.class)) {
-                        String basePath = "/" + clazz.getAnnotation(AnnotationController.class).value();
-                        Mapping mapping = new Mapping(clazz.getName());
-
-                        for (Method method : clazz.getDeclaredMethods()) {
-                            if (method.isAnnotationPresent(GetMethode.class)) {
-                                String url = basePath + method.getAnnotation(GetMethode.class).value();
-                                mapping.addMethod(method.getName(), url);
-                                routes.add(new HashMap(url, mapping));
-                            }
-                        }
-                    }
-                }
+            if (controllerPackage == null || controllerPackage.trim().isEmpty()) {
+                throw new ServletException("Le paramètre 'Controllers' est manquant dans web.xml");
             }
-
-            // Stockage global dans le ServletContext
-            getServletContext().setAttribute("routes", routes);
-            System.out.println("✅ Scan terminé : " + routes.size() + " routes enregistrées dans ServletContext ...");
-
+            
+            controllerScanner.scanControllersFromPackage(controllerPackage);
+            
+            for (Class<?> controller : controllerScanner.getControllers()) {
+                Controller controllerAnnotation = controller.getAnnotation(Controller.class);
+                if (controllerAnnotation == null) continue;
+                
+                String baseUrl = controllerAnnotation.value();
+                if (!baseUrl.startsWith("/")) {
+                    baseUrl = "/" + baseUrl;
+                }
+                baseUrlToController.put(baseUrl, controller);
+            }
+            System.out.println("🎯 " + baseUrlToController.size() + " contrôleurs chargés");
         } catch (Exception e) {
-            e.printStackTrace();
+            throw new ServletException("Erreur lors de l'initialisation des contrôleurs", e);
         }
     }
 
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
         String path = req.getRequestURI().substring(req.getContextPath().length());
-    
-        // Endpoint spécial pour afficher toutes les routes
-        if (path.equals("/routes")) {
-            showRoutes(res);
-            return;
-        }
-    
-        // ⚡ LOG pour preuve : requête reçue
-        System.out.println("🔹 Requête reçue pour : " + path);
-    
-        // Vérifie d'abord si c'est une route annotée
-        boolean handled = handleAnnotatedControllers(req, res, path);
-        if (handled) {
-            System.out.println("✅ Route annotée traitée avec succès : " + path);
-            return;
-        }
-    
-        // Sinon, vérifier si c'est un fichier statique
-        boolean resourceExists = getServletContext().getResource(path) != null;
-        if (resourceExists) {
-            System.out.println(" Fichier statique trouvé : " + path + " → servi par defaultDispatcher");
+        if (getServletContext().getResource(path) != null) {
             defaultServe(req, res);
         } else {
-            System.out.println(" Ressource inconnue : " + path + " → affichage page customServe");
             customServe(req, res);
         }
     }
     
-    @SuppressWarnings("unchecked")
-    private boolean handleAnnotatedControllers(HttpServletRequest req, HttpServletResponse res, String path) {
+    private void customServe(HttpServletRequest req, HttpServletResponse res) throws IOException {
         try {
-            List<HashMap> routes = (List<HashMap>) getServletContext().getAttribute("routes");
-            if (routes == null) return false;
-    
-            for (HashMap h : routes) {
-                if (h.getUrl().equals(path) && h.isAssociated()) {
-                    Mapping mapping = h.getMapping();
-                    String className = mapping.getClassName();
-                    String methodName = h.leMethode();
-    
-                    // Instanciation dynamique du controller
-                    Class<?> clazz = Class.forName(className);
-                    Object controllerInstance = clazz.getDeclaredConstructor().newInstance();
-                    Method method = clazz.getDeclaredMethod(methodName);
-    
-                    // 🔹 Log de preuve
-                    System.out.println("➡ Exécution de la méthode : " + className + "." + methodName);
-    
-                    // Exécution de la méthode
-                    Object result = method.invoke(controllerInstance);
-    
-                    // 🔹 Log sur le retour
-                    if (result != null) {
-                        System.out.println("➡ Valeur de retour : " + result + " | Type : " + result.getClass().getSimpleName());
-                    } else {
-                        System.out.println("➡ Valeur de retour : null");
+            String path = req.getRequestURI().substring(req.getContextPath().length());
+            
+            for (Map.Entry<String, Class<?>> entry : baseUrlToController.entrySet()) {
+                String baseUrl = entry.getKey();
+                
+                if (path.startsWith(baseUrl)) {
+                    Class<?> controllerClass = entry.getValue();
+                    String actionPath = path.substring(baseUrl.length());
+                    if (actionPath.isEmpty()) actionPath = "/"; 
+                    
+                    Method targetMethod = findTargetMethod(controllerClass, actionPath);
+                    
+                    if (targetMethod != null) {
+                        Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                        Object result = invokeMethodWithParams(targetMethod, controllerInstance, req, res);
+                        handleControllerResult(result, req, res);
+                        return;
                     }
-    
-                    // 🔹 Gestion du retour
-                    if (result instanceof String) {
-                        System.out.println(" Retour est une chaîne → affichée au navigateur");
-                        res.setContentType("text/html;charset=UTF-8");
-                        try (PrintWriter out = res.getWriter()) {
-                            out.println(result);
-                        }
-                    } else if (result instanceof ModelView) {
-                        System.out.println(" Retour est un ModelView → dispatch vers la vue");
-                        ModelView mv = (ModelView) result;
-    
-                        // Ajout des données dans le request
-                        for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
-                            req.setAttribute(entry.getKey(), entry.getValue());
-                        }
-    
-                        // Dispatcher vers la JSP ou HTML
-                        String view = mv.getView(); // ex: "/WEB-INF/views/home.jsp"
-                        req.getRequestDispatcher(view).forward(req, res);
-                    } else {
-                        System.out.println("Retour n'est pas une chaîne ni ModelView → aucune action effectuée");
-                    }
-    
-                    return true; // Route traitée
+                    
+                    displayControllerInfo(controllerClass, baseUrl, res);
+                    return;
                 }
+            }
+
+            res.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            try (PrintWriter out = res.getWriter()) {
+                 out.println("<h1>404 Not Found</h1><p>La ressource demandée n'a pas été trouvée : <strong>" + path + "</strong></p>");
             }
         } catch (Exception e) {
-            e.printStackTrace();
-        }
-    
-        return false; // Route non trouvée
-    }
-    
-    
-
-    // Affichage des routes pour debug
-    @SuppressWarnings("unchecked")
-    private void showRoutes(HttpServletResponse res) throws IOException {
-        List<HashMap> routes = (List<HashMap>) getServletContext().getAttribute("routes");
-
-        res.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = res.getWriter()) {
-            out.println("<html><head><title>Routes</title></head><body>");
-            out.println("<h1>Liste des routes scannées</h1>");
-            out.println("<ul>");
-
-            if (routes != null) {
-                for (HashMap h : routes) {
-                    Mapping mapping = h.getMapping();
-                    String className = mapping.getClassName();
-                    String methodName = h.leMethode();
-                    String url = h.getUrl();
-
-                    out.printf("<li>URL: <strong>%s</strong> → Classe: <strong>%s</strong>, Méthode: <strong>%s</strong></li>",
-                            url, className, methodName);
-                }
+            res.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            try (PrintWriter out = res.getWriter()) {
+                 out.println("<h1>500 Internal Server Error</h1><p>Erreur interne du serveur: " + e.getMessage() + "</p>");
+                 e.printStackTrace(out);
             }
-
-            out.println("</ul></body></html>");
-        }
-    }
-
-    private void customServe(HttpServletRequest req, HttpServletResponse res) throws IOException {
-        try (PrintWriter out = res.getWriter()) {
-            String uri = req.getRequestURI();
-            String responseBody = """
-                    <html>
-                        <head><title>Resource Not Found</title></head>
-                        <body>
-                            <h1>Unknown resource</h1>
-                            <p>The requested URL was not found: <strong>%s</strong></p>
-                        </body>
-                    </html>
-                    """.formatted(uri);
-
-            res.setContentType("text/html;charset=UTF-8");
-            out.println(responseBody);
         }
     }
 
     private void defaultServe(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
         defaultDispatcher.forward(req, res);
+    }
+    
+    private Method findTargetMethod(Class<?> controllerClass, String actionPath) {
+        for (Method method : controllerClass.getDeclaredMethods()) {
+            MyMap mapping = method.getAnnotation(MyMap.class);
+            if (mapping != null && mapping.url().equals(actionPath)) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private Object invokeMethodWithParams(Method method, Object controllerInstance, HttpServletRequest req, HttpServletResponse res) throws Exception {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        java.lang.reflect.Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[paramTypes.length];
+        
+        for (int i = 0; i < paramTypes.length; i++) {
+            Class<?> paramType = paramTypes[i];
+            java.lang.reflect.Parameter parameter = parameters[i];
+            
+            if (paramType.equals(HttpServletRequest.class)) {
+                args[i] = req;
+            } else if (paramType.equals(HttpServletResponse.class)) {
+                args[i] = res;
+            } else {
+                String paramName;
+                String paramValue;
+                
+                RequestParam requestParam = parameter.getAnnotation(RequestParam.class);
+                if (requestParam != null) {
+                    paramName = requestParam.value();
+                    paramValue = req.getParameter(paramName);
+                    System.out.println("🔍 @RequestParam: " + paramName + " = " + paramValue);
+                } else {
+                    paramName = parameter.getName();
+                    paramValue = req.getParameter(paramName);
+                    System.out.println("🔍 Paramètre auto: " + paramName + " = " + paramValue);
+                }
+                
+                if (paramValue == null || paramValue.trim().isEmpty()) {
+                    if (paramType.isPrimitive()) {
+                        throw new IllegalArgumentException("Paramètre primitif requis manquant: " + paramName);
+                    }
+                    args[i] = null;
+                } else {
+                    args[i] = convertParameterValue(paramValue, paramType);
+                }
+            }
+        }
+        return method.invoke(controllerInstance, args);
+    }
+
+    private Object convertParameterValue(String value, Class<?> targetType) {
+        try {
+            if (targetType.equals(String.class)) return value;
+            if (targetType.equals(int.class) || targetType.equals(Integer.class)) return Integer.parseInt(value);
+            if (targetType.equals(long.class) || targetType.equals(Long.class)) return Long.parseLong(value);
+            if (targetType.equals(double.class) || targetType.equals(Double.class)) return Double.parseDouble(value);
+            if (targetType.equals(boolean.class) || targetType.equals(Boolean.class)) return Boolean.parseBoolean(value);
+            throw new IllegalArgumentException("Type de paramètre non supporté pour la conversion: " + targetType.getName());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Erreur de conversion pour la valeur '" + value + "' vers le type " + targetType.getSimpleName(), e);
+        }
+    }
+
+    public void handleControllerResult(Object result, HttpServletRequest req, HttpServletResponse res) throws Exception {
+        if (result == null) {
+            res.setStatus(HttpServletResponse.SC_NO_CONTENT);
+            return;
+        }
+        
+        if (result instanceof String) {
+            String viewOrContent = (String) result;
+            if (isViewName(viewOrContent)) {
+                req.getRequestDispatcher("/WEB-INF/views/" + viewOrContent).forward(req, res); 
+            } else {
+                res.setContentType("text/html;charset=UTF-8");
+                try (PrintWriter out = res.getWriter()) { out.println(viewOrContent); }
+            }
+        } else if (result instanceof ModelView) {
+            ModelView mv = (ModelView) result;
+            mv.getData().forEach(req::setAttribute);
+            req.getRequestDispatcher("/WEB-INF/views/" + mv.getView()).forward(req, res);
+        } else {
+            res.setContentType("text/plain;charset=UTF-8");
+            try (PrintWriter out = res.getWriter()) { out.println("Type de retour non géré : " + result.getClass().getName()); }
+        }
+    }
+    
+    private boolean isViewName(String result) {
+        return result.endsWith(".jsp") || result.endsWith(".html");
+    }
+
+    private void displayControllerInfo(Class<?> controllerClass, String baseUrl, HttpServletResponse res) throws IOException {
+        res.setContentType("text/html;charset=UTF-8");
+        try (PrintWriter out = res.getWriter()) {
+            out.println("<h2>Controller: " + controllerClass.getSimpleName() + ".class</h2>");
+            out.println("<p>Base URL: " + baseUrl + "</p>");
+            out.println("<h3>Méthodes supportées :</h3><ul>");
+            for (Method method : controllerClass.getDeclaredMethods()) {
+                MyMap mapping = method.getAnnotation(MyMap.class);
+                if (mapping != null) {
+                    out.println("<li>" + method.getName() + "() ➜ " + mapping.url() + "</li>");
+                }
+            }
+            out.println("</ul><p>Retourne Spring ✅</p>");
+        }
     }
 }

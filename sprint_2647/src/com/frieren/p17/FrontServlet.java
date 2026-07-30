@@ -143,6 +143,7 @@ public class FrontServlet extends HttpServlet {
     
                         // Ajout des données dans le request
                         for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
+                            System.out.println("SET ATTRIBUTE : " + entry.getKey() + " = " + entry.getValue());
                             req.setAttribute(entry.getKey(), entry.getValue());
                         }
     
@@ -153,7 +154,7 @@ public class FrontServlet extends HttpServlet {
                         System.out.println("Retour n'est pas une chaîne ni ModelView → aucune action effectuée");
                     }
     
-                    return true; // Route traitée
+                    return true;
                 }
             }
         } catch (Exception e) {

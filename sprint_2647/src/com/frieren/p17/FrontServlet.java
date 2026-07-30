@@ -101,6 +101,11 @@ public class FrontServlet extends HttpServlet {
         methodInstances.put(method, instance);
     }
 
+    private void registerUrl(String url, String httpMethod, Method method, Object instance) {
+        urlToHttpMethod.computeIfAbsent(url, k -> new HashMap<>()).put(httpMethod.toUpperCase(), method);
+        methodInstances.put(method, instance);
+    }
+
     @Override
     protected void service(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
         String path = req.getRequestURI().substring(req.getContextPath().length());
@@ -164,10 +169,6 @@ public class FrontServlet extends HttpServlet {
                 args[i] = res;
             } else if (paramType.equals(MySession.class)) {
                 args[i] = new MySession(req.getSession());
-            } else if (isPojo(paramType)) {
-                Object pojoInstance = paramType.getDeclaredConstructor().newInstance();
-                bindParametersToPojo(pojoInstance, req.getParameterMap());
-                args[i] = pojoInstance;
             } else {
                 String paramValue = null;
                 RequestParam requestParam = parameter.getAnnotation(RequestParam.class);
@@ -194,47 +195,8 @@ public class FrontServlet extends HttpServlet {
         return method.invoke(controllerInstance, args);
     }
 
-    private boolean isPojo(Class<?> clazz) {
-        return !clazz.isPrimitive() && !clazz.getName().startsWith("java.") && !clazz.getName().startsWith("jakarta.");
-    }
-
-    private void bindParametersToPojo(Object pojoInstance, Map<String, String[]> parameterMap) {
-        Class<?> pojoClass = pojoInstance.getClass();
-
-        for (Map.Entry<String, String[]> entry : parameterMap.entrySet()) {
-            String paramName = entry.getKey();
-            String[] values = entry.getValue();
-            
-            try {
-                String setterName = "set" + Character.toUpperCase(paramName.charAt(0)) + paramName.substring(1);
-                
-                try {
-                    // Essayer de trouver un setter pour un tableau (ex: pour les checkboxes)
-                    Method setter = pojoClass.getMethod(setterName, String[].class);
-                    setter.invoke(pojoInstance, (Object) values);
-                } catch (NoSuchMethodException e) {
-                    // Si pas de setter pour un tableau, essayer pour une valeur simple
-                    if (values.length == 1) {
-                        try {
-                            Method setter = pojoClass.getMethod(setterName, String.class);
-                            setter.invoke(pojoInstance, values[0]);
-                        } catch (NoSuchMethodException e2) {
-                            // Si aucun setter n'est trouvé, essayer d'accéder au champ directement
-                            try {
-                                Field field = pojoClass.getDeclaredField(paramName);
-                                field.setAccessible(true);
-                                Object convertedValue = convertParameterValue(values[0], field.getType());
-                                field.set(pojoInstance, convertedValue);
-                            } catch (NoSuchFieldException e3) {
-                                // Ignorer si le champ n'existe pas
-                            }
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                System.err.println("Erreur de binding pour le paramètre " + paramName + ": " + e.getMessage());
-            }
-        }
+    private void defaultServe(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
+        defaultDispatcher.forward(req, res);
     }
 
     private void defaultServe(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {

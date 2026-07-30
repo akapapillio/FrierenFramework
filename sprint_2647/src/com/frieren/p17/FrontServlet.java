@@ -99,7 +99,6 @@ public class FrontServlet extends HttpServlet {
     private void registerUrl(String url, String httpMethod, Method method, Object instance) {
         urlToHttpMethod.computeIfAbsent(url, k -> new HashMap<>()).put(httpMethod.toUpperCase(), method);
         methodInstances.put(method, instance);
-        System.out.println("🔗 Route enregistrée: [" + httpMethod + "] " + url);
     }
 
     private void registerUrl(String url, String httpMethod, Method method, Object instance) {
@@ -200,46 +199,8 @@ public class FrontServlet extends HttpServlet {
         defaultDispatcher.forward(req, res);
     }
 
-    private Object convertParameterValue(String value, Class<?> targetType) {
-        try {
-            if (targetType.equals(String.class)) return value;
-            if (targetType.equals(int.class) || targetType.equals(Integer.class)) return Integer.parseInt(value);
-            if (targetType.equals(long.class) || targetType.equals(Long.class)) return Long.parseLong(value);
-            if (targetType.equals(double.class) || targetType.equals(Double.class)) return Double.parseDouble(value);
-            if (targetType.equals(boolean.class) || targetType.equals(Boolean.class)) return Boolean.parseBoolean(value);
-            throw new IllegalArgumentException("Type de paramètre non supporté pour la conversion: " + targetType.getName());
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Erreur de conversion pour la valeur '" + value + "' vers le type " + targetType.getSimpleName(), e);
-        }
-        return method.invoke(controllerInstance, args);
-    }
-
-    public void handleControllerResult(Object result, HttpServletRequest req, HttpServletResponse res) throws Exception {
-        if (result == null) {
-            res.setStatus(HttpServletResponse.SC_NO_CONTENT);
-            return;
-        }
-        
-        if (result instanceof String) {
-            String viewOrContent = (String) result;
-            if (isViewName(viewOrContent)) {
-                req.getRequestDispatcher("/WEB-INF/views/" + viewOrContent).forward(req, res); 
-            } else {
-                res.setContentType("text/html;charset=UTF-8");
-                try (PrintWriter out = res.getWriter()) { out.println(viewOrContent); }
-            }
-        } else if (result instanceof ModelView) {
-            ModelView mv = (ModelView) result;
-            mv.getData().forEach(req::setAttribute);
-            req.getRequestDispatcher("/WEB-INF/views/" + mv.getView()).forward(req, res);
-        } else {
-            res.setContentType("text/plain;charset=UTF-8");
-            try (PrintWriter out = res.getWriter()) { out.println("Type de retour non géré : " + result.getClass().getName()); }
-        }
-    }
-    
-    private boolean isViewName(String result) {
-        return result.endsWith(".jsp") || result.endsWith(".html");
+    private void defaultServe(HttpServletRequest req, HttpServletResponse res) throws ServletException, IOException {
+        defaultDispatcher.forward(req, res);
     }
 
     private Object convertParameterValue(String value, Class<?> targetType) {

@@ -220,6 +220,10 @@ public class FrontServlet extends HttpServlet {
     private boolean isViewName(String result) {
         return result.endsWith(".jsp") || result.endsWith(".html");
     }
+    
+    private boolean isViewName(String result) {
+        return result.endsWith(".jsp") || result.endsWith(".html");
+    }
 
     private void displayControllerInfo(Class<?> controllerClass, String baseUrl, HttpServletResponse res) throws IOException {
         res.setContentType("text/html;charset=UTF-8");
